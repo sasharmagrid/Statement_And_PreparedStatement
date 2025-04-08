@@ -1,51 +1,52 @@
 import java.sql.*;
+import java.util.Scanner;
+
+import io.github.cdimascio.dotenv.Dotenv;
+
+
+//TEST with this statement = admin' OR '1'='1
 
 public class SQLInjectionDemo {
-    static final String DB_URL = "jdbc:postgresql://localhost:5432/demo_db";
-    static final String USER = "demo_user";
-    static final String PASS = "demo_pass";
+    private static final Dotenv dotenv = Dotenv.configure().load();
+    private static final String DB_HOST = dotenv.get("DB_HOST");
+    private static final String DB_PORT = dotenv.get("DB_PORT");
+    private static final String DB_NAME = dotenv.get("DB_NAME");
+    private static final String DB_USER = dotenv.get("DB_USER");
+    private static final String DB_PASSWORD = dotenv.get("DB_PASSWORD");
+
+    // Constructing the JDBC URL dynamically using environment variables
+    private static final String URL = String.format("jdbc:postgresql://%s:%s/%s", DB_HOST, DB_PORT, DB_NAME);
+
+    // Database credentials (from environment variables)
+    private static final String USER = DB_USER;
+    private static final String PASSWORD = DB_PASSWORD;
 
     public static void main(String[] args) {
-        try (Connection conn = DriverManager.getConnection(DB_URL, USER, PASS)) {
-            setupDatabase(conn);
+        try (Connection connection = DriverManager.getConnection(URL, USER, PASSWORD);
+             Scanner scanner = new Scanner(System.in)) {
 
-            String maliciousInput = "'; DROP TABLE users; --";
-            System.out.println("Unsafe Query using Statement:");
-            unsafeQuery(conn, maliciousInput);
+            System.out.print("Enter username: ");
+            String username = scanner.nextLine();
 
-            System.out.println("\nSafe Query using PreparedStatement:");
-            safeQuery(conn, maliciousInput);
+            System.out.println("\nUsing Statement:");
+            try (Statement statement = connection.createStatement()) {
+                String query = "SELECT * FROM users WHERE username = '" + username + "'";
+                ResultSet rs = statement.executeQuery(query);
+                while (rs.next()) {
+                    System.out.println("User found: " + rs.getString("username"));
+                }
+            }
+
+            System.out.println("\nUsing PreparedStatement:");
+            try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT * FROM users WHERE username = ?")) {
+                preparedStatement.setString(1, username);
+                ResultSet rs = preparedStatement.executeQuery();
+                while (rs.next()) {
+                    System.out.println("User found: " + rs.getString("username"));
+                }
+            }
         } catch (SQLException e) {
             System.out.println(e.getMessage());
-        }
-    }
-
-    private static void setupDatabase(Connection conn) throws SQLException {
-        Statement stmt = conn.createStatement();
-        stmt.execute("DROP TABLE IF EXISTS users");
-        stmt.execute("CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT)");
-        stmt.execute("INSERT INTO users (name) VALUES ('Alice'), ('Bob')");
-    }
-
-    private static void unsafeQuery(Connection conn, String name) {
-        try {
-            Statement stmt = conn.createStatement();
-            String query = "SELECT * FROM users WHERE name = '" + name + "'";
-            System.out.println("Executing: " + query);
-            stmt.executeQuery(query);
-        } catch (SQLException e) {
-            System.out.println("Caught exception: " + e.getMessage());
-        }
-    }
-
-    private static void safeQuery(Connection conn, String name) {
-        try {
-            String query = "SELECT * FROM users WHERE name = ?";
-            PreparedStatement pstmt = conn.prepareStatement(query);
-            pstmt.setString(1, name);
-            pstmt.executeQuery();
-        } catch (SQLException e) {
-            System.out.println("Caught exception: " + e.getMessage());
         }
     }
 }
